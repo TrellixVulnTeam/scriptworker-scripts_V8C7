@@ -41,6 +41,7 @@ def test_firefox_fake_prod():
         "DEP_PARTNER_KEY": "",
         "MAVEN_ID": "",
         "MAVEN_KEY": "",
+        "DEV_RELENG_CREDENTIALS": "",
     }
     _validate_config(context)
 

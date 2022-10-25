@@ -8,6 +8,7 @@ import tempfile
 
 from google.api_core.exceptions import Forbidden
 from google.auth.exceptions import DefaultCredentialsError
+from google.cloud import artifactregistry_v1
 from google.cloud.storage import Bucket, Client
 from scriptworker.exceptions import ScriptWorkerTaskException
 
@@ -22,6 +23,7 @@ from beetmoverscript.utils import (
     get_partner_releases_prefix,
     get_product_name,
     get_releases_prefix,
+    get_resource_name,
     matches_exclude,
 )
 
@@ -43,8 +45,8 @@ def setup_gcloud(context):
         log.info("No GCS credentials found, skipping")
 
 
-def set_gcs_client(context):
-    product = get_product_name(context.task, context.config)
+def _get_gcs_storage_client(context, product):
+    """Set up a google-cloud-storage client"""
 
     def handle_exception(e):
         if get_fail_task_on_error(context.config["clouds"], context.bucket, "gcloud"):
@@ -72,7 +74,22 @@ def set_gcs_client(context):
         handle_exception(e)
         return
     log.info(f"Found GCS bucket {bucket} - proceeding with GCS uploads.")
-    context.gcs_client = client
+    return client
+
+
+def _get_artifact_registry_client(context, product):
+    """Set up a google-cloud-artifact-registry client"""
+    client = artifactregistry_v1.ArtifactRegistryAsyncClient()
+    # Add some validation & logging like _get_gcs_storage_client
+    return client
+
+
+def set_gcs_client(context):
+    product = get_product_name(context.task, context.config)
+    if "repo" in context.resource_type:
+        context.gcs_client = _get_artifact_registry_client(context, product)
+    else:
+        context.gcs_client = _get_gcs_storage_client(context, product)
 
 
 def setup_gcs_credentials(raw_creds):
@@ -99,6 +116,72 @@ async def upload_to_gcs(context, target_path, path):
     log.info("upload_to_gcs: %s -> Bucket: gs://%s/%s", path, bucket_name, target_path)
 
     return blob.upload_from_filename(path, content_type=mime_type)
+
+
+def get_gcs_source(context, product):
+    bucket_name = get_bucket_name(context, product, "gcloud")
+    gcs_source_kwargs = {
+        # paths to the beets in cloud storage we want to move to the repository (supports wildcards)
+        "uris": [f"gs://{bucket_name}/{source}" for source in context.task["payload"]["sources"]],
+        "use_wildcards": True,
+    }
+    if context.resource_type == "apt-repo":
+        return artifactregistry_v1.ImportAptArtifactsGcsSource(**gcs_source_kwargs)
+    if context.resource_type == "yum-repo":
+        return artifactregistry_v1.ImportYumArtifactsGcsSource(**gcs_source_kwargs)
+    # artifact registry supports docker... interesting...
+    raise Exception("Artifact Registry resource must be one of [apt-repo, yum-repo]")
+
+
+def get_import_artifacts_request(context, repository, gcs_source):
+    import_request_kwargs = {
+        "gcs_source": gcs_source,
+        "parent": repository.name,
+    }
+    if context.resource_type == "apt-repo":
+        return artifactregistry_v1.ImportAptArtifactsRequest(**import_request_kwargs)
+    if context.resource_type == "yum-repo":
+        return artifactregistry_v1.ImportYumArtifactsRequest(**import_request_kwargs)
+    # artifact registry supports docker... interesting...
+    raise Exception("Artifact Registry resource must be one of [apt-repo, yum-repo]")
+
+
+def make_import_artifacts_request(context, import_artifacts_request):
+    if context.resource_type == "apt-repo":
+        return context.gcs_client.import_apt_artifacts(request=import_artifacts_request)
+    if context.resource_type == "yum-repo":
+        return context.gcs_client.import_yum_artifacts(request=import_artifacts_request)
+    raise Exception("Artifact Registry resource must be one of [apt-repo, yum-repo]")
+
+
+async def import_artifacts(context):
+    """Imports repo artifacts from cloud storage to artifact registry"""
+    product = get_product_name(context.task, context.config)
+    project = "moz-fx-dev-releng"  # the project the repo is in. hard-coding our dev. env. for now
+    location = "northamerica-northeast2"  # this is the region / location of the repo. got it from the console
+    repository = get_resource_name(context, product, "gcloud")
+    # the artifact registry client needs these fully qualified name...
+    parent = f"projects/{project}/locations/{location}/repositories/{repository}"
+    get_repo_request = artifactregistry_v1.GetRepositoryRequest(
+        name=parent,
+    )
+
+    # ping the repo, we can read it (could be a check we do when we set up the client)
+    repository = await context.gcs_client.get_repository(request=get_repo_request)
+    log.info(repository)
+
+    gcs_source = get_gcs_source(context, product)
+    log.info(gcs_source)
+
+    import_artifacts_request = get_import_artifacts_request(context, repository, gcs_source)
+    log.info(import_artifacts_request)
+
+    async_operation = await make_import_artifacts_request(context, import_artifacts_request)
+    result = await async_operation.result()
+    if len(result.errors) != 0:
+        log.error(result.errors)
+    else:
+        log.info(result)
 
 
 async def push_to_releases_gcs(context):

@@ -1,0 +1,54 @@
+{
+  "title": "Taskcluster beetmover artifact registry import-artifacts task schema",
+  "type": "object",
+  "properties": {
+    "dependencies": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "releaseProperties": {
+          "type": "object",
+          "properties": {
+            "appName": {
+              "type": "string"
+            },
+            "buildid": {
+              "type": "string"
+            },
+            "appVersion": {
+              "type": "string"
+            },
+            "hashType": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            }
+          }
+        },
+        "maxRunTime": {
+          "type": "number"
+        }
+      },
+      "required": ["sources"]
+    }
+  },
+  "required": ["payload", "dependencies"]
+}

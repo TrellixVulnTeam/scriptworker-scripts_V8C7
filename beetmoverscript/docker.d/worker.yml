@@ -79,6 +79,16 @@ clouds:
             enabled: True
             product_buckets:
               firefox: 'mozilla-releng-dep-partner'
+          dev-releng:
+            credentials: { "$eval": "DEV_RELENG_CREDENTIALS" }
+            fail_task_on_error: True
+            enabled: True
+            product_buckets:
+              firefox: 'releng-beetmover-dev'
+            product_apt_repos:
+              firefox: 'releng-apt-dev'
+            product_yum_repos:
+              firefox: 'releng-yum-dev'
         'COT_PRODUCT == "firefox" && ENV == "prod"':
           nightly:
             credentials: { "$eval": "GCS_CREDENTIALS" }

@@ -15,6 +15,7 @@ from scriptworker.exceptions import TaskVerificationError
 from scriptworker.utils import get_results_and_future_exceptions, raise_future_exceptions
 
 from beetmoverscript.constants import (
+    ARTIFACT_REGISTRY_ACTIONS,
     DIRECT_RELEASE_ACTIONS,
     HASH_BLOCK_SIZE,
     MAVEN_ACTIONS,
@@ -126,6 +127,10 @@ def is_partner_action(action):
     nightly or something else. Does that by checking the action type.
     """
     return action in PARTNER_REPACK_ACTIONS
+
+
+def is_import_artifacts_action(action):
+    return action in ARTIFACT_REGISTRY_ACTIONS
 
 
 def is_maven_action(action):
@@ -319,6 +324,16 @@ def get_partner_match(keyname, candidates_prefix, partners):
 
 def get_bucket_name(context, product, cloud):
     return context.config["clouds"][cloud][context.bucket]["product_buckets"][product.lower()]
+
+
+def get_resource_name(context, product, cloud):
+    if context.resource_type == "apt-repo":
+        return context.config["clouds"][cloud][context.bucket]["product_apt_repos"][product.lower()]
+    if context.resource_type == "yum-repo":
+        return context.config["clouds"][cloud][context.bucket]["product_yum_repos"][product.lower()]
+    if context.resource_type == "bucket":
+        return context.config["clouds"][cloud][context.bucket]["product_buckets"][product.lower()]
+    raise Exception("No valid resource type in task scopes. Resource must be one of [apt-repo, yum-repo, bucket]")
 
 
 def get_fail_task_on_error(clouds_config, release_bucket, cloud):

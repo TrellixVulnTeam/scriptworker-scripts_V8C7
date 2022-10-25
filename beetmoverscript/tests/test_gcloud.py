@@ -94,7 +94,7 @@ def test_set_gcs_client(context, monkeypatch, bucket_name, client_set):
     monkeypatch.setattr(beetmoverscript.gcloud, "Client", FakeClient)
     monkeypatch.setattr(beetmoverscript.gcloud, "get_bucket_name", lambda *x: bucket_name)
     beetmoverscript.gcloud.set_gcs_client(context)
-    assert hasattr(context, "gcs_client") == client_set
+    assert bool(context.gcs_client) == client_set
 
 
 @pytest.mark.parametrize("exception", (Forbidden, DefaultCredentialsError, Exception))
